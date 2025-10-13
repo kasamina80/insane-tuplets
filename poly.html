@@ -1,0 +1,389 @@
+<!-- JavaScriptとTailwindの練習のため、意図的に全てを1ファイルに入れています。 -->
+
+<!doctype html>
+<script src="http://unpkg.com/tone"></script>
+<script>
+  // ユーティリティ ここから
+  const sample = (arrayData) => {
+    const arrayIndex = Math.floor(Math.random() * arrayData.length);
+    return arrayData[arrayIndex];
+  };
+
+  const deleteAt = (array, pos) => {
+    return array.slice(0, pos) + array.slice(pos + 1);
+  };
+
+  // JavaScript does not have `Integer#times` in Ruby
+  const times = (n, func) => {
+    for (let i = 0; i < n; i++) {
+      func(i);
+    }
+  };
+
+  // https://stackoverflow.com/questions/27030/comparing-arrays-of-objects-in-javascript
+  const objectsEqual = (o1, o2) => 
+    typeof o1 === 'object' && Object.keys(o1).length > 0 
+        ? Object.keys(o1).length === Object.keys(o2).length 
+            && Object.keys(o1).every(p => objectsEqual(o1[p], o2[p]))
+        : o1 === o2;
+
+  // Ruby on Railsで使ったDataMapperの類似物
+  // ActiveRecordの文法より実装しやすい
+  //
+  // <U, T: { id: U }>
+  // T[] => {
+  //   all: object => T[],
+  //   first: object => T | undefined,
+  //   get: U => T | undefined
+  // }
+  const makeModel = (records) => {
+    const model = {
+      all: (params) => {
+        // paramsが空の場合
+        if (params === undefined || Object.keys(params).length === 0) {
+          return records;
+        } else {
+          return records.filter((record) => {
+            return Object.keys(params).every((key) => { 
+              const value = params[key];
+              return objectsEqual(record[key], value);
+            })
+          })
+        }
+      },
+
+      first: (params) => {
+        return model.all(params)[0];
+      },
+
+      get: (value) => {
+        return model.first({ id: value })
+      }
+    };
+
+    return model;
+  }
+
+  const playNotes = (synth, notes) => {
+    synth.triggerAttackRelease(notes, "8n"); 
+  }
+  // ユーティリティ ここまで
+
+  const globalState = {
+    words: ["1", "2", "3", "4"],
+    lastIndex: {
+      card: 0,
+      word: 0
+    },
+    playStatus: {
+      interval: undefined,
+      linePosition: 0
+    }
+  };
+
+  const SCORE_LENGTH = 8;
+  const SCORE_COLORS = ["#FF0000", "#88AA00", "#00AA33", "#0066FF", "#CC00FF"];
+  const MSEC_PER_FRAME = 10;
+  const BPMS = [10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80];
+  const INITIAL_BPM = 20;
+  // const TONES = ["C4", "E4", "G4", "C5", "E5"];
+  const TONES = ["G4", "B5", "D6", "G6", "B6"];
+  const DIFFICULTIES = [
+    {
+      id: 1,
+      name: "チュートリアル",
+      notes: [1, 2, 4],
+      tracks: 2,
+      bpm: 60
+    },
+    {
+      id: 2,
+      name: "かんたん",
+      notes: [1, 2, 3, 4],
+      tracks: 2,
+      bpm: 60
+    },
+    {
+      id: 3,
+      name: "ふつう",
+      notes: [2, 3, 4, 5, 6],
+      tracks: 2,
+      bpm: 40
+    },
+    {
+      id: 4,
+      name: "むずかしい",
+      notes: [3, 4, 5, 6],
+      tracks: 3,
+      bpm: 30
+    },
+    {
+      id: 5,
+      name: "とてもむずかしい",
+      notes: [3, 4, 5, 6, 7, 8],
+      tracks: 3,
+      bpm: 30
+    },
+    {
+      id: 6,
+      name: "これができたら今すぐドラムセットを買おう",
+      notes: [3, 4, 5, 6, 7, 8],
+      tracks: 4,
+      bpm: 30,
+    },
+    {
+      id: 7,
+      name: "あのゲームでもここまではしなかった",
+      notes: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      tracks: 5,
+      bpm: 20
+    }
+  ]
+  const Difficulty = makeModel(DIFFICULTIES);
+
+  // シンセサイザーを初期化
+  const synth = new Tone.PolySynth();
+  synth.toDestination();
+  synth.volume.value = -25;
+
+  const currentCards = () => {
+    const insideCards = document.querySelectorAll(`div.card > span`);
+    return insideCards.map((card) => card.innerHTML); 
+  }
+
+  const drawScore = (elem, word) => {
+    elem.innerText = word;
+  }
+
+  const addCard = (word, outerElem) => {
+    const index = globalState.lastIndex.card + 1;
+    globalState.lastIndex.card++;
+    const cardElement = document.createElement("div");
+    cardElement.id = `card-${index}`;
+    cardElement.className = "card border-1 border-solid rounded-sm text-xl w-24 h-12 flex items-center justify-center flex-shrink-0"
+    const insideCardElement = document.createElement("span");
+    drawScore(insideCardElement, word);
+    cardElement.appendChild(insideCardElement);
+    outerElem.appendChild(cardElement);
+    rerenderScore();
+  }
+  
+  const draw = (outerElem) => {
+    const word = sample(globalState.words);
+    addCard(word, outerElem);
+  };
+  
+  const drawMany = (count) => {
+    resetCards();
+    resetWords();
+    const tracks = parseInt(document.querySelector("select[name='tracks']").value);
+    [...Array(tracks)].forEach(() => {
+      const trackElement = document.createElement("div");
+      trackElement.className = "track flex flex-row gap-2 justify-evenly";
+      document.getElementById("cards").appendChild(trackElement);
+      [...Array(count)].forEach(() => { draw(trackElement); });
+    });
+    enableTogglePlayButton();
+  }
+  
+  const resetCards = () => {
+    document.querySelectorAll(".track").forEach((elem) => { elem.remove(); });
+    document.querySelectorAll(".card").forEach((elem) => { elem.remove(); });
+  }
+
+  const resetWords = () => {
+    const newWords = document.getElementById("notes-input").value.split("\n").filter((word) => word.length > 0);
+    globalState.words = newWords;
+  }
+
+  const enableTogglePlayButton = () => {
+    const togglePlayButton = document.getElementById("toggle-play");
+    togglePlayButton.classList.remove("bg-gray-300");
+    togglePlayButton.disabled = false;
+  }
+
+  const getTracks = () => {
+    return [...document.querySelectorAll("#cards .track")].map((elem) => {
+      return [...elem.querySelectorAll(".card")].map((subelem) => subelem.innerText);
+    });
+  }
+
+  const generateNotes = (elem, beat, color) => {
+    const num = parseInt(beat);
+    [...Array(num)].forEach((_) => {
+      const noteElement = document.createElement("span");
+      noteElement.className = `note border-l-1 border-solid flex-grow h-12 border-[${color}]`;
+      elem.appendChild(noteElement);
+    });
+  }
+
+  const rerenderScore = () => {
+    const scoreContentElement = document.createElement("div");
+    scoreContentElement.id = "score-content";
+    scoreContentElement.className = "flex flex-col gap-2";
+
+    const tracks = getTracks();
+
+    tracks.forEach((track, trackIndex) => {
+      const trackScoreElement = document.createElement("div");
+      trackScoreElement.className = "track-score flex flex-column";
+      const color = SCORE_COLORS[trackIndex];
+      track.forEach((beat) => {
+        const beatElement = document.createElement("span");
+        beatElement.className = `beat-score border-1 border-solid flex w-1/${SCORE_LENGTH} border-[${color}]`;
+        generateNotes(beatElement, beat, color);
+        trackScoreElement.appendChild(beatElement);
+      });
+      scoreContentElement.appendChild(trackScoreElement);
+    });
+
+    document.getElementById("score-content").replaceWith(scoreContentElement);
+
+    const scoreLineElement = document.getElementById("score-line");
+    scoreLineElement.classList.remove("invisible");
+  };
+
+  const rerenderLineAndPlay = () => {
+    const lineElement = document.getElementById("score-line");
+    const bpm = document.querySelector("select[name='bpm']").value;
+    const scoreSize = document.getElementById("score-content").offsetWidth;
+
+    const bps = bpm / 60.0;
+    const movePixels = bps * (MSEC_PER_FRAME / 1000) * (1 / SCORE_LENGTH);
+    const oldLinePosition = globalState.playStatus.linePosition;
+    
+    const newLinePosition = (oldLinePosition + movePixels) % 1;
+    lineElement.style.left = `${newLinePosition * scoreSize}px`;
+    globalState.playStatus.linePosition = newLinePosition;
+
+    const trackCount = parseInt(document.querySelector("select[name='tracks']").value);
+
+    var notes = [];
+    if (oldLinePosition > newLinePosition) {
+      notes = Array.from({ length: trackCount }, (_, index) => index);
+    } else {
+      const tracks = getTracks();
+      tracks.forEach((track, trackIndex) => {
+        track.forEach((beat, index) => {
+          // beat #index, note #count (both 0-indexed)
+          times(beat, (count) => {
+            const beatPosition = (index + count / beat) / SCORE_LENGTH;
+            if (oldLinePosition < beatPosition && beatPosition <= newLinePosition) {
+              notes.push(trackIndex);
+            }
+          });
+        });
+      });
+    }
+    if (notes.length > 0) {
+      playNotes(synth, notes.map((index) => TONES[index]));
+    }
+  }
+
+  const togglePlay = () => {
+    const bpm = 20;
+    if (globalState.playStatus.interval === undefined) {
+      globalState.playStatus.interval = setInterval(() => { rerenderLineAndPlay(); }, MSEC_PER_FRAME);
+    } else {
+      clearInterval(globalState.playStatus.interval);
+      globalState.playStatus.interval = undefined;
+    }
+  }
+
+  const setInitialWords = () => {
+    document.getElementById("notes-input").value = globalState.words.join("\n");
+  };
+
+  const setDifficulty = () => {
+    const beatsInputElement = document.getElementById("notes-input");
+    const tracksElement = document.querySelector("select[name='tracks']");
+    const bpmElement = document.querySelector("select[name='bpm']");
+    const selectedDifficultyId = document.querySelector("select[name='difficulty']").value;
+    const difficulty = Difficulty.get(parseInt(selectedDifficultyId));
+
+    beatsInputElement.value = difficulty.notes.join("\n");
+    tracksElement.value = difficulty.tracks;
+    bpmElement.value = difficulty.bpm;
+  }
+
+  // TODO: 共通化
+  const setBpms = () => {
+    const bpmElement = document.querySelector("select[name='bpm']");
+    BPMS.forEach((bpm) => {
+      const optionElement = document.createElement("option");
+      optionElement.text = bpm;
+      optionElement.value = bpm;
+      optionElement.selected = bpm == INITIAL_BPM;
+      bpmElement.appendChild(optionElement);
+    });
+  }
+
+  // TODO: 共通化
+  const setDifficultySelections = () => {
+    const bpmElement = document.querySelector("select[name='difficulty']");
+    DIFFICULTIES.forEach((difficulty) => {
+      const optionElement = document.createElement("option");
+      optionElement.text = difficulty.name;
+      optionElement.value = difficulty.id;
+      optionElement.selected = difficulty.id == 1;
+      bpmElement.appendChild(optionElement);
+    });
+
+    setDifficulty();
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setInitialWords();
+    setBpms();
+    setDifficultySelections();
+
+    window.scoreLength = SCORE_LENGTH;
+  });
+</script>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  </head>
+  <body>
+    <h1 class="text-3xl font-bold underline">エグい連符を練習できるサイト</h1>
+
+    <div class="grid grid-cols-5 m-8">
+      <div id="words" class="col-span-1 border-2 border-solid p-4">
+        <h2 class="text-2xl">難易度</h2>
+        <select name="difficulty" class="border-1 border-solid px-2 rounded-sm mt-2 mb-2 w-full text-sm" onchange="setDifficulty()"></select>
+        <h2 class="text-2xl">リスト</h2>
+        <textarea id="notes-input" rows="8" class="border-1 border-solid w-24"></textarea>
+        <div>
+          <select name="tracks" class="border-1 border-solid px-2 rounded-sm mt-2 mb-2" onchange="rerenderScore()">
+            <option value="1">1個</option>
+            <option value="2">2個</option>
+            <option value="3">3個</option>
+            <option value="4">4個</option>
+            <option value="5">5個</option>
+          </select>
+        </div>
+        <div id="buttons">
+          <button id="set-words" class="border-1 border-solid rounded-sm w-24 mt-2 mb-4" onclick="drawMany(scoreLength)">生成</button>
+          <hr>
+          <div class="mt-2">
+            <label for="bpm">BPM</label>
+            <select name="bpm" class="border-1 border-solid px-2 rounded-sm mt-2 mb-2">
+            </select>
+          </div>
+          <button id="toggle-play" class="border-1 border-solid rounded-sm w-24 mt-2 mb-2 bg-gray-300" disabled="disabled" onclick="togglePlay()">再生/停止</button>
+        </div>
+      </div>
+      <div id="main-frame" class="p-8 col-span-4 border-2 border-l-0 border-solid8">
+        <div id="cards" class="min-h-24 flex flex-col gap-2 mb-4"></div>
+        <hr>
+        <div id="score-wrapper" class="relative mt-4">
+          <div id="score-content" class="flex flex-col gap-2">
+          </div>
+          <div id="score-line" class="absolute top-0 left-0 border-1 border-solid w-0 h-full invisible"></div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
