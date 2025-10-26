@@ -274,7 +274,10 @@
     scoreLineElement.classList.remove("invisible");
 
     const lineElement = document.getElementById("score-line");
+
+    // TODO: 2つセットで更新するのが良くないのでReactのuseStateみたいなのを作る
     lineElement.style.left = "0px";
+    globalState.playStatus.linePosition = 0;
   };
 
   const rerenderLineAndPlay = () => {
@@ -430,3 +433,4 @@
     </div>
   </body>
 </html>
+
