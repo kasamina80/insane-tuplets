@@ -64,6 +64,38 @@
     return model;
   }
 
+  // (options: [string, string], selected?: string) => HTMLElement[]
+  const optionsForSelect = (options, selected) => {
+    return options.map((option) => {
+      const text = option[0];
+      const value = option[1];
+
+      const optionElement = document.createElement("option");
+      optionElement.text = text;
+      optionElement.value = value;
+      if (selected) {
+        optionElement.selected = value === selected;
+      }
+      return optionElement;
+    });
+  }
+
+  const initializeSelect = (selectElement, options) => {
+    options.forEach((option) => {
+      selectElement.appendChild(option);
+    })
+  }
+
+  const disable = (elem) => {
+    elem.classList.add("bg-gray-300");
+    elem.disabled = true;
+  }
+
+  const enable = (elem) => {
+    elem.classList.remove("bg-gray-300");
+    elem.disabled = false;
+  }
+
   const playNotes = (synth, notes) => {
     synth.triggerAttackRelease(notes, "8n"); 
   }
@@ -83,10 +115,9 @@
 
   const SCORE_LENGTH = 8;
   const SCORE_COLORS = ["#FF0000", "#88AA00", "#00AA33", "#0066FF", "#CC00FF"];
-  const MSEC_PER_FRAME = 10;
+  const MSEC_PER_FRAME = 20;
   const BPMS = [10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80];
   const INITIAL_BPM = 20;
-  // const TONES = ["C4", "E4", "G4", "C5", "E5"];
   const TONES = ["G4", "B4", "D5", "G5", "B5"];
   const DIFFICULTIES = [
     {
@@ -241,6 +272,9 @@
 
     const scoreLineElement = document.getElementById("score-line");
     scoreLineElement.classList.remove("invisible");
+
+    const lineElement = document.getElementById("score-line");
+    lineElement.style.left = "0px";
   };
 
   const rerenderLineAndPlay = () => {
@@ -306,28 +340,33 @@
     bpmElement.value = difficulty.bpm;
   }
 
-  // TODO: 共通化
-  const setBpms = () => {
+  const changeCustom = () => {
+    const customChecked = document.getElementById("custom").checked;
+
+    const beatsInputElement = document.getElementById("notes-input");
+    const tracksElement = document.querySelector("select[name='tracks']");
     const bpmElement = document.querySelector("select[name='bpm']");
-    BPMS.forEach((bpm) => {
-      const optionElement = document.createElement("option");
-      optionElement.text = bpm;
-      optionElement.value = bpm;
-      optionElement.selected = bpm == INITIAL_BPM;
-      bpmElement.appendChild(optionElement);
-    });
+    const difficultyElement = document.querySelector("select[name='difficulty']")
+
+    const customElements = [beatsInputElement, tracksElement, bpmElement];
+
+    if (customChecked) {
+      disable(difficultyElement);
+      customElements.forEach((elem) => enable(elem));
+    } else {
+      enable(difficultyElement);
+      customElements.forEach((elem) => disable(elem));
+    }
   }
 
-  // TODO: 共通化
+  const setBpms = () => {
+    const bpmElement = document.querySelector("select[name='bpm']");
+    initializeSelect(bpmElement, optionsForSelect(BPMS.map((bpm) => [bpm, bpm]), INITIAL_BPM));
+  }
+
   const setDifficultySelections = () => {
-    const bpmElement = document.querySelector("select[name='difficulty']");
-    DIFFICULTIES.forEach((difficulty) => {
-      const optionElement = document.createElement("option");
-      optionElement.text = difficulty.name;
-      optionElement.value = difficulty.id;
-      optionElement.selected = difficulty.id == 1;
-      bpmElement.appendChild(optionElement);
-    });
+    const difficultyElement = document.querySelector("select[name='difficulty']");
+    initializeSelect(difficultyElement, optionsForSelect(DIFFICULTIES.map((difficulty) => [difficulty.name, difficulty.id]), 1));
 
     setDifficulty();
   }
@@ -353,10 +392,14 @@
       <div id="words" class="col-span-1 border-2 border-solid p-4">
         <h2 class="text-2xl">難易度</h2>
         <select name="difficulty" class="border-1 border-solid px-2 rounded-sm mt-2 mb-2 w-full text-sm" onchange="setDifficulty()"></select>
+        <label for="custom">
+          <input type="checkbox" id="custom" name="custom" onChange="changeCustom()"/>
+          カスタム
+        </label>
         <h2 class="text-2xl">リスト</h2>
-        <textarea id="notes-input" rows="8" class="border-1 border-solid w-24"></textarea>
+        <textarea id="notes-input" rows="8" class="border-1 border-solid w-24 bg-gray-300" disabled="disabled"></textarea>
         <div>
-          <select name="tracks" class="border-1 border-solid px-2 rounded-sm mt-2 mb-2" onchange="rerenderScore()">
+          <select name="tracks" class="border-1 border-solid px-2 rounded-sm mt-2 mb-2 bg-gray-300" disabled="disabled" onchange="rerenderScore()">
             <option value="1">1個</option>
             <option value="2">2個</option>
             <option value="3">3個</option>
@@ -369,7 +412,7 @@
           <hr>
           <div class="mt-2">
             <label for="bpm">BPM</label>
-            <select name="bpm" class="border-1 border-solid px-2 rounded-sm mt-2 mb-2">
+            <select name="bpm" class="border-1 border-solid px-2 rounded-sm mt-2 mb-2 bg-gray-300" disabled="disabled">
             </select>
           </div>
           <button id="toggle-play" class="border-1 border-solid rounded-sm w-24 mt-2 mb-2 bg-gray-300" disabled="disabled" onclick="togglePlay()">再生/停止</button>
@@ -387,5 +430,3 @@
     </div>
   </body>
 </html>
-
-
